@@ -129,7 +129,7 @@ class Connection:
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
 
     @staticmethod
-    def _ready(weak_self):
+    def _ready(weak_self, tag=None):
         self = weak_self()
         if self is None:
             return
@@ -182,10 +182,16 @@ class Connection:
                 if self._writing:
                     self._loop.remove_writer(self._fileno)
                     self._writing = False
+                if self._conn.status == 20:  # CONN_STATUS_CONNECTING psycopg2/psycopg/connection.h
+                    self._loop.remove_reader(self._fileno)  # без удаления не работает
+                    self._loop.add_reader(self._fileno, self._ready, self._weakref)
             elif state == POLL_WRITE:
                 if not self._writing:
                     self._loop.add_writer(self._fileno, self._ready, weak_self)
                     self._writing = True
+                elif self._conn.status == 20:  # CONN_STATUS_CONNECTING psycopg2/psycopg/connection.h
+                    self._loop.remove_writer(self._fileno)  # без удаления не работает
+                    self._loop.add_writer(self._fileno, self._ready, weak_self)
             elif state == POLL_ERROR:
                 self._fatal_error("Fatal error on aiopg connection: "
                                   "POLL_ERROR from underlying .poll() call")
